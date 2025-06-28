@@ -1,6 +1,6 @@
 {
   "name": "ai-carbon",
-  "version": "1.0.0",
+  "version": "0.1.0-rc.1",
   "description": "A TypeScript package for calculating the environmental impact of AI model usage, starting with Claude 4 models from Anthropic",
   "type": "module",
   "main": "dist/index.js",
