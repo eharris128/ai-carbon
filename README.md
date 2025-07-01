@@ -1,18 +1,22 @@
 # ai-carbon
 
-A TypeScript package for calculating the environmental impact of AI model usage, starting with Claude 4 models from Anthropic.
+[![npm version](https://img.shields.io/npm/v/ai-carbon)](https://www.npmjs.com/package/ai-carbon)
+
+A comprehensive TypeScript package for calculating the environmental impact of AI model usage across multiple providers: Claude, OpenAI GPT, and Google Gemini.
 
 ## Overview
 
-`ai-carbon` provides real-time carbon footprint calculations for AI inference operations. Track CO2 emissions, energy consumption, and water usage across different AI models to optimize for both performance and environmental impact.
+`ai-carbon` provides real-time carbon footprint calculations for AI inference operations across all major LLM providers. Track CO2 emissions, energy consumption, and water usage to optimize for both performance and environmental impact.
 
 **Key Features:**
-- Zero-dependency client-side calculations
-- Real-time environmental impact tracking
-- Comprehensive metrics (CO2, energy, water usage)
-- Claude 4 Sonnet and Opus support
-- Cache-aware calculations for optimized workloads
-- Research-backed methodology
+- 🌍 **Multi-provider support**: Claude, OpenAI, and Gemini models
+- ⚡ **Zero-dependency** client-side calculations
+- 📊 **Real-time environmental tracking** (CO2, energy, water)
+- 🏆 **Provider efficiency comparisons** with ranking system
+- 🧠 **Reasoning mode support** with accurate cost modeling
+- 💾 **Cache-aware calculations** for optimized workloads
+- 🌐 **Regional infrastructure differences** (PUE, renewable energy)
+- 📈 **Research-backed methodology** with academic references
 
 ## Installation
 
@@ -22,93 +26,177 @@ npm install ai-carbon
 
 ## Quick Start
 
-```typescript
-import { calculateClaude4Impact } from 'ai-carbon';
+### Multi-Provider Comparison
 
-// Calculate impact for a Claude API call
-const impact = calculateClaude4Impact({
+```typescript
+import { calculateImpact, compareProviders } from 'ai-carbon';
+
+// Calculate impact for any provider
+const claudeImpact = await calculateImpact({
+  provider: 'claude',
   model: 'claude-4-sonnet',
   inputTokens: 1000,
-  outputTokens: 500,
-  reasoning: false
+  outputTokens: 500
 });
 
-console.log(`CO2 Impact: ${impact.co2Grams.toFixed(2)}g`);
-console.log(`Energy: ${impact.energyWh.toFixed(2)}Wh`);
-console.log(`Water: ${impact.waterLiters.toFixed(3)}L`);
+const openaiImpact = await calculateImpact({
+  provider: 'openai',
+  model: 'gpt-4o',
+  inputTokens: 1000,
+  outputTokens: 500
+});
+
+const geminiImpact = await calculateImpact({
+  provider: 'gemini',
+  model: 'gemini-2.5-pro',
+  inputTokens: 1000,
+  outputTokens: 500
+});
+
+console.log(`Claude: ${claudeImpact.co2Grams.toFixed(4)}g CO2`);
+console.log(`OpenAI: ${openaiImpact.co2Grams.toFixed(4)}g CO2`);
+console.log(`Gemini: ${geminiImpact.co2Grams.toFixed(4)}g CO2`);
+```
+
+### Automatic Provider Comparison
+
+```typescript
+import { compareProviders, getProviderEfficiencyRanking } from 'ai-carbon';
+
+// Compare all providers automatically
+const comparison = await compareProviders(1000, 500);
+console.log('Claude CO2:', comparison.claude.co2Grams);
+console.log('OpenAI CO2:', comparison.openai.co2Grams);
+console.log('Gemini CO2:', comparison.gemini.co2Grams);
+
+// Get efficiency ranking (lowest CO2 first)
+const ranking = await getProviderEfficiencyRanking(1000, 500);
+ranking.forEach((item, index) => {
+  console.log(`${index + 1}. ${item.provider}: ${item.co2Grams.toFixed(4)}g CO2`);
+});
 ```
 
 ## Supported Models
 
-| Model | Energy per Token | Use Case |
-|-------|------------------|----------|
-| `claude-4-sonnet` | 0.0012 J/token | Efficient, everyday tasks |
-| `claude-4-opus` | 0.0045 J/token | Most capable, research tasks |
+### Claude (Anthropic)
+| Model | Energy/Token | Architecture | Use Case |
+|-------|--------------|--------------|----------|
+| `claude-4-sonnet` | 0.0012 J/token | Mixture-of-Experts | Efficient everyday tasks |
+| `claude-4-opus` | 0.0045 J/token | Transformer-Large | Advanced reasoning |
+
+### OpenAI (Microsoft Azure)
+| Model | Energy/Token | Architecture | Use Case |
+|-------|--------------|--------------|----------|
+| `gpt-4o` | 0.0025 J/token | Transformer-Large | Optimized efficiency |
+| `gpt-4` | 0.0035 J/token | Transformer-Large | Advanced capabilities |
+| `gpt-4-turbo` | 0.0030 J/token | Transformer-Large | Speed optimized |
+| `o1-preview` | 0.0250 J/token | Reasoning-Enhanced | Complex problem solving |
+
+### Google Gemini
+| Model | Energy/Token | Architecture | Use Case |
+|-------|--------------|--------------|----------|
+| `gemini-2.5-pro` | 0.0008 J/token | MoE-TPU | Superior efficiency |
+| `gemini-1.5-pro` | 0.0010 J/token | MoE-TPU | Multimodal tasks |
+
+## Provider Efficiency Comparison
+
+Based on our research-backed calculations for 1000 input + 500 output tokens:
+
+| Rank | Provider | Model | CO2 Emissions | Efficiency vs Baseline |
+|------|----------|-------|---------------|------------------------|
+| 1🥇 | **Gemini** | gemini-2.5-pro | ~0.000024g | **72% less than Claude** |
+| 2🥈 | **OpenAI** | gpt-4o | ~0.000000g* | **100% renewable** |
+| 3🥉 | **Claude** | claude-4-sonnet | ~0.000086g | Baseline |
+
+*OpenAI shows minimal CO2 due to Microsoft's renewable energy commitments
 
 ## Advanced Usage
 
-### Cache Operations
-
-For workloads using Claude's caching features:
+### Reasoning Mode Impact
 
 ```typescript
-const impact = calculateClaude4Impact({
+// Claude reasoning mode (2.5x multiplier)
+const claudeReasoning = await calculateImpact({
+  provider: 'claude',
+  model: 'claude-4-sonnet',
+  inputTokens: 2000,
+  outputTokens: 1000,
+  reasoning: true  // 2.5x energy increase
+});
+
+// OpenAI o1-preview (built-in reasoning)
+const openaiReasoning = await calculateImpact({
+  provider: 'openai',
+  model: 'o1-preview',  // 10x base energy due to reasoning tokens
+  inputTokens: 2000,
+  outputTokens: 1000
+});
+```
+
+### Cache Operations (Claude)
+
+```typescript
+const cachedWorkload = await calculateImpact({
+  provider: 'claude',
   model: 'claude-4-sonnet',
   inputTokens: 35240,
   outputTokens: 506176,
-  cacheCreationTokens: 25361509,  // Cache writes
-  cacheReadTokens: 417330728,     // Cache hits
-  reasoning: false
-});
-
-// Result: ~3.08kg CO2 for this large cached workload
-```
-
-### Reasoning Mode
-
-Claude 4 reasoning mode uses significantly more compute:
-
-```typescript
-const reasoningImpact = calculateClaude4Impact({
-  model: 'claude-4-opus',
-  inputTokens: 2000,
-  outputTokens: 1000,
-  reasoning: true  // 2.5x energy multiplier
+  cacheCreationTokens: 25361509,  // 1.1x cost
+  cacheReadTokens: 417330728      // 0.12x cost
 });
 ```
 
-### Batch Calculations
+### Regional Infrastructure Differences
 
 ```typescript
-import { calculateBatchImpact, aggregateImpacts } from 'ai-carbon';
+// Different regions have different carbon intensities
+const usEast = await calculateImpact({
+  provider: 'claude',
+  model: 'claude-4-sonnet',
+  inputTokens: 1000,
+  outputTokens: 500,
+  region: 'us-east-1'  // Higher carbon intensity
+});
 
-const requests = [
-  { model: 'claude-4-sonnet', inputTokens: 100, outputTokens: 50 },
-  { model: 'claude-4-opus', inputTokens: 200, outputTokens: 100 }
+const usWest = await calculateImpact({
+  provider: 'claude',
+  model: 'claude-4-sonnet',
+  inputTokens: 1000,
+  outputTokens: 500,
+  region: 'us-west-2'  // Lower carbon intensity
+});
+```
+
+### Batch Processing and Aggregation
+
+```typescript
+import { calculateBatchImpactMultiProvider, aggregateEmissions } from 'ai-carbon';
+
+const multiProviderRequests = [
+  { provider: 'claude', model: 'claude-4-sonnet', inputTokens: 1000, outputTokens: 500 },
+  { provider: 'openai', model: 'gpt-4o', inputTokens: 1000, outputTokens: 500 },
+  { provider: 'gemini', model: 'gemini-2.5-pro', inputTokens: 1000, outputTokens: 500 }
 ];
 
-const impacts = calculateBatchImpact(requests);
-const summary = aggregateImpacts(impacts);
+const results = await calculateBatchImpactMultiProvider(multiProviderRequests);
+const summary = aggregateEmissions(results);
 
-console.log(`Total CO2: ${summary.co2Grams}g across ${summary.calls} calls`);
-```
-
-### Model Comparison
-
-```typescript
-import { compareModels } from 'ai-carbon';
-
-const comparison = compareModels(1000, 500);
-console.log(`Opus uses ${comparison.opusMultiplier.toFixed(1)}x more CO2 than Sonnet`);
+console.log(`Total CO2: ${summary.co2Grams}g across ${summary.calls} providers`);
+console.log(`Average CO2 per token: ${summary.averageCO2PerToken}g`);
 ```
 
 ## API Reference
 
-### Types
+### Multi-Provider Functions
+
+#### `calculateImpact(options: MultiProviderOptions): Promise<EmissionResult>`
+
+Calculate environmental impact for any supported AI model.
 
 ```typescript
-interface CalculationOptions {
-  model: 'claude-4-sonnet' | 'claude-4-opus';
+interface MultiProviderOptions {
+  provider: 'claude' | 'openai' | 'gemini';
+  model: string;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens?: number;
@@ -116,140 +204,137 @@ interface CalculationOptions {
   reasoning?: boolean;
   region?: string;
 }
-
-interface Claude4Impact {
-  model: string;
-  co2Grams: number;
-  energyWh: number;
-  waterLiters: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens?: number;
-  cacheReadTokens?: number;
-  reasoning: boolean;
-  timestamp: string;
-}
 ```
 
-### Functions
+#### `compareProviders(inputTokens: number, outputTokens: number, reasoning?: boolean)`
 
-#### `calculateClaude4Impact(options: CalculationOptions): Claude4Impact`
+Compare environmental impact across all three providers using their most efficient models.
 
-Calculate environmental impact for a single Claude 4 API call.
+#### `getProviderEfficiencyRanking(inputTokens: number, outputTokens: number)`
 
-#### `calculateBatchImpact(calculations: CalculationOptions[]): Claude4Impact[]`
+Get providers ranked by efficiency (lowest CO2 emissions first).
 
-Process multiple calculations efficiently.
+#### `getSupportedProviders(): string[]`
 
-#### `aggregateImpacts(impacts: Claude4Impact[])`
+Get list of all supported providers.
 
-Aggregate multiple impact calculations for reporting.
+#### `getSupportedModels(provider: string): string[]`
 
-```typescript
-// Returns:
-{
-  co2Grams: number;
-  energyWh: number;
-  waterLiters: number;
-  totalTokens: number;
-  calls: number;
-  averageCO2PerToken: number;
-  averageEnergyPerToken: number;
-}
-```
+Get list of supported models for a specific provider.
 
-#### `compareModels(inputTokens: number, outputTokens: number)`
+### Utility Functions
 
-Compare environmental impact between Claude 4 Sonnet and Opus.
+#### `formatEmissionResult(result: EmissionResult): string`
+
+Format emission results for human-readable output.
+
+#### `aggregateEmissions(emissions: EmissionResult[]): AggregatedImpact`
+
+Aggregate multiple emission results for reporting.
+
+### Legacy Functions (Backward Compatible)
+
+All original Claude-specific functions remain available:
+- `calculateClaude4Impact()`
+- `calculateBatchImpact()`
+- `aggregateImpacts()`
+- `compareModels()`
 
 ## Methodology
 
-### Energy Calculations
+### Energy Calculation Formula
 
-Our calculations are based on extensive research into LLM energy consumption:
-
-**Base Formula:**
 ```
-Total Energy = (Token Count × Energy per Token × Reasoning Multiplier × PUE)
-CO2 Emissions = Total Energy × Carbon Intensity
-Water Usage = Total Energy × Water Usage Effectiveness
+Energy = (Token Count × Model Energy/Token × Architecture Multiplier × 
+         Reasoning Multiplier × Output Token Multiplier) / Hardware Efficiency
 ```
 
-**Key Parameters:**
-- **Power Usage Effectiveness (PUE)**: 1.12 (AWS datacenters)
-- **Carbon Intensity**: 0.385 kg CO2/kWh (US grid average)
-- **Water Usage Effectiveness**: 1.8 L/kWh (datacenter cooling)
+### Provider-Specific Calculations
 
-### Cache Operation Costs
+**Claude (AWS Infrastructure):**
+- PUE: 1.12, Regional renewable energy: 60-75%
+- Cache operations: Creation 1.1x, Retrieval 0.12x
+- Reasoning mode: 2.5x multiplier
 
-Based on research analysis of transformer inference patterns:
+**OpenAI (Microsoft Azure):**
+- PUE: 1.12, Renewable energy: 85-95%
+- Output tokens: 4.5x energy cost (memory bandwidth bottleneck)
+- o1-preview: 10x base energy for reasoning tokens
 
-- **Cache Creation**: 1.1x normal token cost (full computation + storage)
-- **Cache Retrieval**: 0.12x normal token cost (memory bandwidth limited)
+**Gemini (Google Cloud):**
+- PUE: 1.09 (industry-leading), Renewable energy: 64-90%
+- TPU efficiency: 0.5x vs GPU equivalent
+- Balanced input/output costs
 
-### Model-Specific Estimates
+### Carbon Intensity Calculation
 
-**Claude 4 Sonnet:**
-- 0.0012 J/token (estimated from architectural analysis)
-- ~200B parameters, mixture-of-experts architecture
+```
+CO2 = Energy (kWh) × Regional Carbon Intensity × (1 - Renewable %) × PUE
+```
 
-**Claude 4 Opus:**
-- 0.0045 J/token (flagship model, higher capability)
-- ~1T+ parameters, advanced reasoning capabilities
+Regional carbon intensities vary from Sweden (41g/kWh) to India (713g/kWh).
 
-### Reasoning Mode
+## Research Foundation
 
-Reasoning operations use approximately 2.5x more compute based on the additional inference steps required for chain-of-thought processing.
-
-## Research References
-
-This package is built on extensive research into LLM environmental impact:
+This package implements findings from extensive academic research:
 
 ### Core Methodology
 - [LLMCarbon: Modeling the end-to-end Carbon Footprint of Large Language Models](https://arxiv.org/abs/2309.14393)
 - [LLMCO2: Advancing Accurate Carbon Footprint Prediction for LLM Inferences](https://arxiv.org/html/2410.02950v1)
 - [Offline Energy-Optimal LLM Serving](https://arxiv.org/html/2407.04014v1)
 
-### KV Cache Research
-- [Understanding and Coding the KV Cache in LLMs](https://magazine.sebastianraschka.com/p/coding-the-kv-cache-in-llms)
-- [NVIDIA TensorRT-LLM KV Cache Optimizations](https://developer.nvidia.com/blog/introducing-new-kv-cache-reuse-optimizations-in-nvidia-tensorrt-llm/)
-- [Microsoft Research: FastGen KV Cache Optimization](https://www.microsoft.com/en-us/research/blog/llm-profiling-guides-kv-cache-optimization/)
+### Provider Analysis
+- **Google TPU Efficiency**: 30x improvement over 2018 baseline, 0.5x vs GPU
+- **Microsoft Azure**: 100% renewable commitment by 2025, PUE improvements
+- **Anthropic Claude**: Mixture-of-experts architecture efficiency analysis
 
-### Energy Benchmarking
-- [Benchmarking the Energy Costs of Large Language Models](https://arxiv.org/pdf/2310.03003)
-- [The Energy Footprint of Humans and Large Language Models](https://cacm.acm.org/blogcacm/the-energy-footprint-of-humans-and-large-language-models/)
-- [Carbon Emissions and Large Neural Network Training](https://arxiv.org/abs/2104.10350)
+### Architecture Research
+- [Understanding KV Cache Optimization](https://magazine.sebastianraschka.com/p/coding-the-kv-cache-in-llms)
+- [Mixture-of-Experts Energy Analysis](https://arxiv.org/abs/2101.03961)
+- [Transformer Energy Benchmarking](https://arxiv.org/pdf/2310.03003)
 
-### Industry Analysis
-- [Ecologits Methodology](https://ecologits.ai/latest/methodology/)
-- [HCLTech: LLM Cache for Sustainable GenAI](https://www.hcltech.com/blogs/llm-cache-sustainable-fast-cost-effective-genai-app-design)
+## Environmental Impact by Use Case
 
-## Limitations & Future Work
+### Typical Usage Patterns
 
-### Current Limitations
-- **Estimates Only**: Based on architectural analysis, not direct measurements
-- **AWS-Centric**: Infrastructure assumptions based on AWS datacenters
-- **Static Parameters**: Does not account for real-time carbon intensity
-- **Limited Models**: Currently supports only Claude 4 family
+| Task Type | Input:Output Ratio | Recommended Provider | Estimated CO2/1K tokens |
+|-----------|-------------------|---------------------|------------------------|
+| **Code Generation** | 1:5 | Gemini 2.5 Pro | 0.000048g |
+| **Document Analysis** | 10:1 | Claude 4 Sonnet | 0.000086g |
+| **Complex Reasoning** | 1:3 | o1-preview | 0.000250g |
+| **Content Creation** | 1:10 | Gemini 2.5 Pro | 0.000072g |
 
-### Roadmap
-- Support for GPT-4, Gemini, and other major models
-- Real-time carbon intensity integration
-- Hardware-specific calculations (H100, A100, etc.)
-- Regional datacenter variations
-- Training impact amortization
-- Fine-tuning and embedding calculations
+### Real-World Impact Examples
+
+```typescript
+// Daily coding assistant (10K tokens/day)
+// Gemini: ~0.00048g CO2/day = 0.175g CO2/year
+// Claude: ~0.00086g CO2/day = 0.314g CO2/year
+// Difference: 44% less emissions with Gemini
+
+// Enterprise document processing (1M tokens/day)  
+// Gemini: ~0.048g CO2/day = 17.5g CO2/year
+// Claude: ~0.086g CO2/day = 31.4g CO2/year
+// Difference: 44% less emissions with Gemini
+```
 
 ## Contributing
 
-We welcome contributions! Areas of particular interest:
+We welcome contributions to expand model support and improve accuracy:
 
-1. **Additional Models**: Help us add support for more LLM families
-2. **Research Integration**: Incorporate new papers on AI energy consumption
-3. **Validation**: Compare estimates against real-world measurements
-4. **Regional Data**: Add carbon intensity data for different regions
+1. **Additional Models**: Help add support for new LLM families
+2. **Infrastructure Data**: Update datacenter PUE and renewable energy data
+3. **Regional Factors**: Add carbon intensity data for more regions
+4. **Validation**: Compare estimates against real measurements
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Limitations
+
+- **Estimates Only**: Based on architectural analysis and research, not direct measurements
+- **Infrastructure Assumptions**: Uses published datacenter specs and renewable energy commitments
+- **Dynamic Factors**: Does not account for real-time carbon intensity or demand-based scaling
+- **Model Variations**: Energy can vary based on input complexity and model versions
 
 ## License
 
@@ -257,13 +342,11 @@ MIT License - see [LICENSE](https://github.com/eharris128/ai-carbon/blob/main/LI
 
 ## Acknowledgments
 
-This package builds on research from:
-- Anthropic (Claude architecture insights)
-- NVIDIA (GPU energy profiling)
-- Microsoft Research (KV cache optimization)
-- Academic researchers studying AI environmental impact
-
-Special thanks to the open research community making LLM environmental impact measurement possible.
+Built on research from:
+- **Anthropic** (Claude architecture insights)
+- **OpenAI & Microsoft** (GPT energy profiling and Azure infrastructure)
+- **Google** (Gemini efficiency research and TPU specifications)
+- **Academic community** studying AI environmental impact
 
 ---
 

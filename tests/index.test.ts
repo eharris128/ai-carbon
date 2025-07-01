@@ -8,14 +8,24 @@ import {
   aggregateImpacts,
   compareModels,
   formatImpact,
-  getModelInfo,
+  getClaudeModelInfo,
   calculateImpactPerDollar,
   calculateLargeWorkloadExample,
   CONSTANTS,
+  // New multi-provider functions
+  calculateImpact,
+  getSupportedModels,
+  getModelInfo,
+  compareProviders,
+  getSupportedProviders,
+  formatEmissionResult,
+  aggregateEmissions,
   type CalculationOptions,
   type Claude4Impact,
   type AggregatedImpact,
   type ModelComparison,
+  type MultiProviderOptions,
+  type EmissionResult,
 } from '../index.js';
 
 import {
@@ -464,7 +474,7 @@ describe('ai-carbon package', () => {
 
     describe('getModelInfo', () => {
       test('returns sonnet model info', () => {
-        const info = getModelInfo('claude-4-sonnet');
+        const info = getClaudeModelInfo('claude-4-sonnet');
         
         expect(info).toHaveProperty('energyPerToken', KNOWN_CONSTANTS.SONNET_ENERGY_PER_TOKEN);
         expect(info).toHaveProperty('description');
@@ -477,7 +487,7 @@ describe('ai-carbon package', () => {
       });
 
       test('returns opus model info', () => {
-        const info = getModelInfo('claude-4-opus');
+        const info = getClaudeModelInfo('claude-4-opus');
         
         expect(info).toHaveProperty('energyPerToken', KNOWN_CONSTANTS.OPUS_ENERGY_PER_TOKEN);
         expect(info).toHaveProperty('description');
@@ -490,8 +500,8 @@ describe('ai-carbon package', () => {
       });
 
       test('opus has higher energy per token than sonnet', () => {
-        const sonnetInfo = getModelInfo('claude-4-sonnet');
-        const opusInfo = getModelInfo('claude-4-opus');
+        const sonnetInfo = getClaudeModelInfo('claude-4-sonnet');
+        const opusInfo = getClaudeModelInfo('claude-4-opus');
         
         expect(opusInfo.energyPerToken).toBeGreaterThan(sonnetInfo.energyPerToken);
       });
@@ -734,7 +744,7 @@ describe('ai-carbon package', () => {
     test('complex scenario with all features', () => {
       const impact = calculateClaude4Impact(complexOptions);
       const formatted = formatImpact(impact);
-      const info = getModelInfo(impact.model as 'claude-4-sonnet' | 'claude-4-opus');
+      const info = getClaudeModelInfo(impact.model as 'claude-4-sonnet' | 'claude-4-opus');
       const perDollar = calculateImpactPerDollar(impact, 2.50);
       
       expectValidImpact(impact);
@@ -764,6 +774,197 @@ describe('ai-carbon package', () => {
       const reasoningOpusImpact = impacts[2];
       const basicSonnetImpact = impacts[0];
       expect(reasoningOpusImpact.co2Grams).toBeGreaterThan(basicSonnetImpact.co2Grams);
+    });
+  });
+
+  // Multi-provider tests
+  describe('Multi-provider functionality', () => {
+    describe('getSupportedProviders', () => {
+      test('returns all supported providers', () => {
+        const providers = getSupportedProviders();
+        expect(providers).toContain('claude');
+        expect(providers).toContain('openai');
+        expect(providers).toContain('gemini');
+        expect(providers).toHaveLength(3);
+      });
+    });
+
+    describe('getSupportedModels', () => {
+      test('returns Claude models', () => {
+        const models = getSupportedModels('claude');
+        expect(models).toContain('claude-4-sonnet');
+        expect(models).toContain('claude-4-opus');
+      });
+
+      test('returns OpenAI models', () => {
+        const models = getSupportedModels('openai');
+        expect(models).toContain('gpt-4o');
+        expect(models).toContain('gpt-4');
+        expect(models).toContain('o1-preview');
+      });
+
+      test('returns Gemini models', () => {
+        const models = getSupportedModels('gemini');
+        expect(models).toContain('gemini-2.5-pro');
+        expect(models).toContain('gemini-1.5-pro');
+      });
+
+      test('throws error for unsupported provider', () => {
+        expect(() => getSupportedModels('unsupported' as any)).toThrow('Unsupported provider');
+      });
+    });
+
+    describe('getModelInfo', () => {
+      test('returns Claude model info', () => {
+        const info = getModelInfo('claude', 'claude-4-sonnet');
+        expect(info).toHaveProperty('energyPerToken');
+        expect(info).toHaveProperty('description');
+        expect(info).toHaveProperty('architecture');
+        expect(info.energyPerToken).toBeGreaterThan(0);
+      });
+
+      test('returns OpenAI model info', () => {
+        const info = getModelInfo('openai', 'gpt-4o');
+        expect(info).toHaveProperty('energyPerToken');
+        expect(info).toHaveProperty('description');
+        expect(info).toHaveProperty('architecture');
+        expect(info.energyPerToken).toBeGreaterThan(0);
+      });
+
+      test('returns Gemini model info', () => {
+        const info = getModelInfo('gemini', 'gemini-2.5-pro');
+        expect(info).toHaveProperty('energyPerToken');
+        expect(info).toHaveProperty('description');
+        expect(info).toHaveProperty('architecture');
+        expect(info.energyPerToken).toBeGreaterThan(0);
+      });
+    });
+
+    describe('calculateImpact', () => {
+      test('calculates impact for Claude models', async () => {
+        const options: MultiProviderOptions = {
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        };
+
+        const result = await calculateImpact(options);
+        expect(result.provider).toBe('claude');
+        expect(result.model).toBe('claude-4-sonnet');
+        expect(result.co2Grams).toBeGreaterThan(0);
+        expect(result.energyWh).toBeGreaterThan(0);
+        expect(result.waterLiters).toBeGreaterThan(0);
+      });
+
+      test('calculates impact for OpenAI models', async () => {
+        const options: MultiProviderOptions = {
+          provider: 'openai',
+          model: 'gpt-4o',
+          inputTokens: 1000,
+          outputTokens: 500
+        };
+
+        const result = await calculateImpact(options);
+        expect(result.provider).toBe('openai');
+        expect(result.model).toBe('gpt-4o');
+        expect(result.co2Grams).toBeGreaterThan(0);
+        expect(result.energyWh).toBeGreaterThan(0);
+        expect(result.waterLiters).toBeGreaterThan(0);
+      });
+
+      test('calculates impact for Gemini models', async () => {
+        const options: MultiProviderOptions = {
+          provider: 'gemini',
+          model: 'gemini-2.5-pro',
+          inputTokens: 1000,
+          outputTokens: 500
+        };
+
+        const result = await calculateImpact(options);
+        expect(result.provider).toBe('gemini');
+        expect(result.model).toBe('gemini-2.5-pro');
+        expect(result.co2Grams).toBeGreaterThan(0);
+        expect(result.energyWh).toBeGreaterThan(0);
+        expect(result.waterLiters).toBeGreaterThan(0);
+      });
+
+      test('Gemini is more efficient than OpenAI', async () => {
+        const inputTokens = 1000;
+        const outputTokens = 500;
+
+        const geminiResult = await calculateImpact({
+          provider: 'gemini',
+          model: 'gemini-2.5-pro',
+          inputTokens,
+          outputTokens
+        });
+
+        const openaiResult = await calculateImpact({
+          provider: 'openai',
+          model: 'gpt-4o',
+          inputTokens,
+          outputTokens
+        });
+
+        expect(geminiResult.co2Grams).toBeLessThan(openaiResult.co2Grams);
+        expect(geminiResult.energyWh).toBeLessThan(openaiResult.energyWh);
+      });
+    });
+
+    describe('compareProviders', () => {
+      test('compares all three providers', async () => {
+        const comparison = await compareProviders(1000, 500);
+        
+        expect(comparison).toHaveProperty('claude');
+        expect(comparison).toHaveProperty('openai');
+        expect(comparison).toHaveProperty('gemini');
+        
+        expect(comparison.claude.provider).toBe('claude');
+        expect(comparison.openai.provider).toBe('openai');
+        expect(comparison.gemini.provider).toBe('gemini');
+        
+        // Gemini should be most efficient
+        expect(comparison.gemini.co2Grams).toBeLessThan(comparison.claude.co2Grams);
+        expect(comparison.gemini.co2Grams).toBeLessThan(comparison.openai.co2Grams);
+      });
+    });
+
+    describe('formatEmissionResult', () => {
+      test('formats emission result correctly', async () => {
+        const result = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        const formatted = formatEmissionResult(result);
+        expect(formatted).toContain('CLAUDE');
+        expect(formatted).toContain('claude-4-sonnet');
+        expect(formatted).toContain('CO2:');
+        expect(formatted).toContain('Energy:');
+        expect(formatted).toContain('Water:');
+      });
+    });
+
+    describe('aggregateEmissions', () => {
+      test('aggregates multiple emission results', async () => {
+        const results = await Promise.all([
+          calculateImpact({ provider: 'claude', model: 'claude-4-sonnet', inputTokens: 500, outputTokens: 300 }),
+          calculateImpact({ provider: 'openai', model: 'gpt-4o', inputTokens: 500, outputTokens: 300 }),
+          calculateImpact({ provider: 'gemini', model: 'gemini-2.5-pro', inputTokens: 500, outputTokens: 300 })
+        ]);
+
+        const aggregated = aggregateEmissions(results);
+        
+        expect(aggregated.calls).toBe(3);
+        expect(aggregated.co2Grams).toBeGreaterThan(0);
+        expect(aggregated.energyWh).toBeGreaterThan(0);
+        expect(aggregated.waterLiters).toBeGreaterThan(0);
+        expect(aggregated.totalTokens).toBe(2400); // 3 * (500 + 300)
+        expect(aggregated.averageCO2PerToken).toBeGreaterThan(0);
+      });
     });
   });
 });

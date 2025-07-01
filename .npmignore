@@ -4,18 +4,29 @@
 
 # Development files
 tsconfig.json
+jest.config.js
 .claude/
 .git/
 .gitignore
+package-lock.json
+demo.js
 
-# Documentation (already included in package via README)
-*.md
-!README.md
+# Tests and coverage
+tests/
+coverage/
+*.test.*
+*.spec.*
+
+# Documentation (keep only essential docs)
+CONTRIBUTING.md
+SECURITY.md
+# Keep README.md for npm
 
 # Node modules and build artifacts
 node_modules/
 .npm/
 *.log
+*.tgz
 
 # IDE files
 .vscode/
