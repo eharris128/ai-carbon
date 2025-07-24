@@ -29,6 +29,7 @@ export interface EmissionResult {
   co2Grams: number;
   energyWh: number;
   waterLiters: number;
+  resourceDepletionMg: number;
   inputTokens: number;
   outputTokens: number;
   cacheCreationTokens?: number;
@@ -50,6 +51,7 @@ export interface ModelInfo {
   description: string;
   architecture: string;
   estimatedParameters?: string;
+  parameterCount?: number;
   useCase?: string;
 }
 
@@ -83,10 +85,12 @@ export interface AggregatedImpact {
   co2Grams: number;
   energyWh: number;
   waterLiters: number;
+  resourceDepletionMg: number;
   totalTokens: number;
   calls: number;
   averageCO2PerToken: number;
   averageEnergyPerToken: number;
+  averageResourceDepletionPerToken: number;
 }
 
 export interface ModelComparison {
@@ -103,6 +107,7 @@ class ClaudeProvider implements CarbonProvider {
       description: 'Efficient model for everyday use (~200B parameters)',
       architecture: 'mixture-of-experts',
       estimatedParameters: '~200B',
+      parameterCount: 200_000_000_000,
       useCase: 'Efficient everyday tasks'
     },
     'claude-4-opus': {
@@ -110,6 +115,7 @@ class ClaudeProvider implements CarbonProvider {
       description: 'Most capable model, higher energy usage (~1T+ parameters)',
       architecture: 'transformer-large',
       estimatedParameters: '~1T+',
+      parameterCount: 1_000_000_000_000,
       useCase: 'Research and complex reasoning'
     }
   } as const;
@@ -118,6 +124,8 @@ class ClaudeProvider implements CarbonProvider {
     pue: 1.12,                // Power Usage Effectiveness (AWS average)
     carbonIntensity: 0.385,   // kg CO2/kWh (US grid average)
     wue: 1.8,                 // Water Usage Effectiveness (L/kWh)
+    upstreamEmissionsFactor: 1.15, // Includes server manufacturing (15% overhead)
+    resourceDepletionFactor: 0.08, // mg per kWh (copper, rare earth elements)
   } as const;
 
   private readonly cacheMultipliers = {
@@ -164,16 +172,23 @@ class ClaudeProvider implements CarbonProvider {
     // Convert to kWh and apply datacenter PUE + regional factors
     const energyKwh = (totalEnergyJoules / 3_600_000) * this.infrastructure.pue * regionalFactor.adjustmentFactor;
     
-    // Calculate environmental impacts with regional carbon intensity
-    const co2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    // Calculate environmental impacts with regional carbon intensity and upstream emissions
+    const baseCO2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    const co2Kg = baseCO2Kg * this.infrastructure.upstreamEmissionsFactor; // Include manufacturing impact
     const waterLiters = energyKwh * this.infrastructure.wue;
+    const resourceDepletionMg = energyKwh * this.infrastructure.resourceDepletionFactor * 1000; // Convert to mg
+    
+    // Apply model size scaling (proportional to parameter count as per Mistral findings)
+    const modelSpecForScaling = this.modelSpecs[config.model as keyof typeof this.modelSpecs];
+    const parameterScaling = Math.log10(modelSpecForScaling.parameterCount / 1_000_000_000) * 0.1 + 1; // Logarithmic scaling
     
     return {
       provider: 'claude',
       model: config.model,
-      co2Grams: co2Kg * 1000,
+      co2Grams: co2Kg * 1000 * parameterScaling,
       energyWh: energyKwh * 1000,
       waterLiters,
+      resourceDepletionMg: resourceDepletionMg * parameterScaling,
       inputTokens: config.inputTokens,
       outputTokens: config.outputTokens,
       cacheCreationTokens: config.cacheCreationTokens,
@@ -208,6 +223,7 @@ class OpenAIProvider implements CarbonProvider {
       description: 'Latest GPT-4 optimized model',
       architecture: 'transformer-large',
       estimatedParameters: '~200B',
+      parameterCount: 200_000_000_000,
       useCase: 'General purpose with improved efficiency'
     },
     'gpt-4': {
@@ -215,6 +231,7 @@ class OpenAIProvider implements CarbonProvider {
       description: 'GPT-4 standard model',
       architecture: 'transformer-large', 
       estimatedParameters: '~1.8T',
+      parameterCount: 1_800_000_000_000,
       useCase: 'Advanced reasoning and complex tasks'
     },
     'gpt-4-turbo': {
@@ -222,6 +239,7 @@ class OpenAIProvider implements CarbonProvider {
       description: 'GPT-4 Turbo optimized for speed',
       architecture: 'transformer-large',
       estimatedParameters: '~1.8T',
+      parameterCount: 1_800_000_000_000,
       useCase: 'Fast responses for complex tasks'
     },
     'o1-preview': {
@@ -229,6 +247,7 @@ class OpenAIProvider implements CarbonProvider {
       description: 'Advanced reasoning model with chain-of-thought',
       architecture: 'reasoning-enhanced',
       estimatedParameters: '~1.8T',
+      parameterCount: 1_800_000_000_000,
       useCase: 'Complex reasoning and problem solving'
     }
   } as const;
@@ -236,6 +255,8 @@ class OpenAIProvider implements CarbonProvider {
   private readonly infrastructure = {
     pue: 1.12,                // Microsoft Azure PUE design target
     wue: 1.5,                 // Azure water usage
+    upstreamEmissionsFactor: 1.18, // Higher manufacturing impact for specialized AI chips
+    resourceDepletionFactor: 0.10, // mg per kWh (higher for GPU-based infrastructure)
   } as const;
 
   private readonly regionalFactors: RegionalCarbonFactors = {
@@ -268,16 +289,23 @@ class OpenAIProvider implements CarbonProvider {
     // Convert to kWh and apply datacenter PUE + regional factors
     const energyKwh = (totalEnergyJoules / 3_600_000) * this.infrastructure.pue * regionalFactor.adjustmentFactor;
     
-    // Microsoft committed to 100% renewable by 2025, so minimal carbon intensity
-    const co2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    // Calculate environmental impacts with upstream emissions (Microsoft infrastructure)
+    const baseCO2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    const co2Kg = baseCO2Kg * this.infrastructure.upstreamEmissionsFactor; // Include manufacturing impact
     const waterLiters = energyKwh * this.infrastructure.wue;
+    const resourceDepletionMg = energyKwh * this.infrastructure.resourceDepletionFactor * 1000; // Convert to mg
+    
+    // Apply model size scaling (proportional to parameter count)
+    const modelSpecForScaling = this.modelSpecs[config.model as keyof typeof this.modelSpecs];
+    const parameterScaling = Math.log10(modelSpecForScaling.parameterCount / 1_000_000_000) * 0.1 + 1;
     
     return {
       provider: 'openai',
       model: config.model,
-      co2Grams: co2Kg * 1000,
+      co2Grams: co2Kg * 1000 * parameterScaling,
       energyWh: energyKwh * 1000,
       waterLiters,
+      resourceDepletionMg: resourceDepletionMg * parameterScaling,
       inputTokens: config.inputTokens,
       outputTokens: config.outputTokens,
       cacheCreationTokens: config.cacheCreationTokens,
@@ -312,6 +340,7 @@ class GeminiProvider implements CarbonProvider {
       description: 'Google\'s most capable model with superior efficiency',
       architecture: 'mixture-of-experts-tpu',
       estimatedParameters: '~1.5T',
+      parameterCount: 1_500_000_000_000,
       useCase: 'Advanced reasoning with superior efficiency'
     },
     'gemini-1.5-pro': {
@@ -319,6 +348,7 @@ class GeminiProvider implements CarbonProvider {
       description: 'Previous generation Gemini Pro model',  
       architecture: 'mixture-of-experts-tpu',
       estimatedParameters: '~1T',
+      parameterCount: 1_000_000_000_000,
       useCase: 'Multimodal tasks with long context'
     }
   } as const;
@@ -327,6 +357,8 @@ class GeminiProvider implements CarbonProvider {
     pue: 1.09,                // Google's industry-leading PUE
     wue: 1.2,                 // Google's advanced cooling
     tpuEfficiencyBonus: 0.5,  // TPU vs GPU efficiency bonus
+    upstreamEmissionsFactor: 1.12, // Lower manufacturing impact due to TPU efficiency
+    resourceDepletionFactor: 0.06, // mg per kWh (lower for TPU-based infrastructure)
   } as const;
 
   private readonly regionalFactors: RegionalCarbonFactors = {
@@ -359,16 +391,23 @@ class GeminiProvider implements CarbonProvider {
     // Convert to kWh with Google's superior PUE
     const energyKwh = (totalEnergyJoules / 3_600_000) * this.infrastructure.pue * regionalFactor.adjustmentFactor;
     
-    // Apply Google's carbon-free energy percentage
-    const co2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    // Calculate environmental impacts with upstream emissions (Google infrastructure)
+    const baseCO2Kg = energyKwh * regionalFactor.carbonIntensity * (1 - regionalFactor.renewablePercentage);
+    const co2Kg = baseCO2Kg * this.infrastructure.upstreamEmissionsFactor; // Include manufacturing impact
     const waterLiters = energyKwh * this.infrastructure.wue;
+    const resourceDepletionMg = energyKwh * this.infrastructure.resourceDepletionFactor * 1000; // Convert to mg
+    
+    // Apply model size scaling (proportional to parameter count)
+    const modelSpecForScaling = this.modelSpecs[config.model as keyof typeof this.modelSpecs];
+    const parameterScaling = Math.log10(modelSpecForScaling.parameterCount / 1_000_000_000) * 0.1 + 1;
     
     return {
       provider: 'gemini',
       model: config.model,
-      co2Grams: co2Kg * 1000,
+      co2Grams: co2Kg * 1000 * parameterScaling,
       energyWh: energyKwh * 1000,
       waterLiters,
+      resourceDepletionMg: resourceDepletionMg * parameterScaling,
       inputTokens: config.inputTokens,
       outputTokens: config.outputTokens,
       cacheCreationTokens: config.cacheCreationTokens,
@@ -556,9 +595,10 @@ export function calculateClaude4Impact(options: CalculationOptions): Claude4Impa
   // Convert to kWh and apply datacenter PUE (Power Usage Effectiveness)
   const energyKwh = (totalEnergyJoules / 3_600_000) * INFRASTRUCTURE.pue;
   
-  // Calculate environmental impacts
+  // Calculate environmental impacts (legacy function - basic calculation)
   const co2Kg = energyKwh * INFRASTRUCTURE.carbonIntensity;
   const waterLiters = energyKwh * INFRASTRUCTURE.wue;
+  const resourceDepletionMg = energyKwh * 0.08 * 1000; // Basic resource depletion factor
   
   return {
     provider: 'claude',
@@ -566,6 +606,7 @@ export function calculateClaude4Impact(options: CalculationOptions): Claude4Impa
     co2Grams: co2Kg * 1000,
     energyWh: energyKwh * 1000,
     waterLiters,
+    resourceDepletionMg,
     inputTokens,
     outputTokens,
     cacheCreationTokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
@@ -591,17 +632,19 @@ export function aggregateImpacts(impacts: Claude4Impact[]): AggregatedImpact {
       co2Grams: acc.co2Grams + impact.co2Grams,
       energyWh: acc.energyWh + impact.energyWh,
       waterLiters: acc.waterLiters + impact.waterLiters,
+      resourceDepletionMg: acc.resourceDepletionMg + impact.resourceDepletionMg,
       totalTokens: acc.totalTokens + impact.inputTokens + impact.outputTokens + 
                    (impact.cacheCreationTokens || 0) + (impact.cacheReadTokens || 0),
       calls: acc.calls + 1,
     }),
-    { co2Grams: 0, energyWh: 0, waterLiters: 0, totalTokens: 0, calls: 0 }
+    { co2Grams: 0, energyWh: 0, waterLiters: 0, resourceDepletionMg: 0, totalTokens: 0, calls: 0 }
   );
 
   return {
     ...totals,
     averageCO2PerToken: totals.totalTokens > 0 ? totals.co2Grams / totals.totalTokens : 0,
     averageEnergyPerToken: totals.totalTokens > 0 ? totals.energyWh / totals.totalTokens : 0,
+    averageResourceDepletionPerToken: totals.totalTokens > 0 ? totals.resourceDepletionMg / totals.totalTokens : 0,
   };
 }
 
@@ -648,12 +691,13 @@ export function calculateLargeWorkloadExample(): Claude4Impact {
  * Format impact for human-readable output
  */
 export function formatImpact(impact: Claude4Impact): string {
-  const { co2Grams, energyWh, waterLiters, model } = impact;
+  const { co2Grams, energyWh, waterLiters, resourceDepletionMg, model } = impact;
   
   return `${model} Impact:
 • CO2: ${co2Grams.toFixed(2)}g
 • Energy: ${energyWh.toFixed(2)}Wh  
 • Water: ${waterLiters.toFixed(3)}L
+• Resource Depletion: ${resourceDepletionMg.toFixed(2)}mg
 • Tokens: ${impact.inputTokens + impact.outputTokens}${impact.cacheCreationTokens ? ` (+${impact.cacheCreationTokens} cache writes)` : ''}${impact.cacheReadTokens ? ` (+${impact.cacheReadTokens} cache reads)` : ''}`;
 }
 
@@ -686,12 +730,13 @@ export function calculateImpactPerDollar(impact: Claude4Impact, estimatedCostUSD
  * Format emission result for human-readable output
  */
 export function formatEmissionResult(result: EmissionResult): string {
-  const { co2Grams, energyWh, waterLiters, model, provider } = result;
+  const { co2Grams, energyWh, waterLiters, resourceDepletionMg, model, provider } = result;
   
   return `${provider.toUpperCase()} ${model} Impact:
 • CO2: ${co2Grams.toFixed(2)}g
 • Energy: ${energyWh.toFixed(2)}Wh  
 • Water: ${waterLiters.toFixed(3)}L
+• Resource Depletion: ${resourceDepletionMg.toFixed(2)}mg
 • Tokens: ${result.inputTokens + result.outputTokens}${result.cacheCreationTokens ? ` (+${result.cacheCreationTokens} cache writes)` : ''}${result.cacheReadTokens ? ` (+${result.cacheReadTokens} cache reads)` : ''}`;
 }
 
@@ -704,17 +749,19 @@ export function aggregateEmissions(emissions: EmissionResult[]): AggregatedImpac
       co2Grams: acc.co2Grams + emission.co2Grams,
       energyWh: acc.energyWh + emission.energyWh,
       waterLiters: acc.waterLiters + emission.waterLiters,
+      resourceDepletionMg: acc.resourceDepletionMg + emission.resourceDepletionMg,
       totalTokens: acc.totalTokens + emission.inputTokens + emission.outputTokens + 
                    (emission.cacheCreationTokens || 0) + (emission.cacheReadTokens || 0),
       calls: acc.calls + 1,
     }),
-    { co2Grams: 0, energyWh: 0, waterLiters: 0, totalTokens: 0, calls: 0 }
+    { co2Grams: 0, energyWh: 0, waterLiters: 0, resourceDepletionMg: 0, totalTokens: 0, calls: 0 }
   );
 
   return {
     ...totals,
     averageCO2PerToken: totals.totalTokens > 0 ? totals.co2Grams / totals.totalTokens : 0,
     averageEnergyPerToken: totals.totalTokens > 0 ? totals.energyWh / totals.totalTokens : 0,
+    averageResourceDepletionPerToken: totals.totalTokens > 0 ? totals.resourceDepletionMg / totals.totalTokens : 0,
   };
 }
 
@@ -750,6 +797,45 @@ export async function getProviderEfficiencyRanking(
     ...ranking,
     efficiency: maxCO2 / ranking.co2Grams
   }));
+}
+
+/**
+ * Calculate marginal impact for standardized response (400 tokens as per Mistral)
+ * This provides a baseline for comparing environmental impact across different use cases
+ */
+export async function calculateMarginalImpact(provider: 'claude' | 'openai' | 'gemini', model: string): Promise<EmissionResult> {
+  // Standardized 400-token response (50 input, 350 output) as reference point
+  return calculateImpact({
+    provider,
+    model,
+    inputTokens: 50,
+    outputTokens: 350,
+    reasoning: false
+  });
+}
+
+/**
+ * Calculate environmental impact following GHG Protocol standards
+ * Includes Scope 1, 2, and 3 emissions where applicable
+ */
+export async function calculateGHGProtocolImpact(options: MultiProviderOptions): Promise<EmissionResult & {
+  scope1Emissions: number; // Direct emissions (minimal for cloud AI)
+  scope2Emissions: number; // Indirect emissions from electricity
+  scope3Emissions: number; // Value chain emissions (manufacturing, etc.)
+}> {
+  const baseResult = await calculateImpact(options);
+  
+  // GHG Protocol scoping
+  const scope1Emissions = 0; // Cloud AI has minimal direct emissions
+  const scope2Emissions = baseResult.co2Grams * 0.85; // ~85% from electricity consumption
+  const scope3Emissions = baseResult.co2Grams * 0.15; // ~15% from upstream manufacturing
+  
+  return {
+    ...baseResult,
+    scope1Emissions,
+    scope2Emissions, 
+    scope3Emissions
+  };
 }
 
 // Export constants for advanced usage

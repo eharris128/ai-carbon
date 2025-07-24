@@ -94,6 +94,7 @@ export const expectValidImpact = (impact: Claude4Impact): void => {
   expect(impact).toHaveProperty('co2Grams');
   expect(impact).toHaveProperty('energyWh');
   expect(impact).toHaveProperty('waterLiters');
+  expect(impact).toHaveProperty('resourceDepletionMg');
   expect(impact).toHaveProperty('inputTokens');
   expect(impact).toHaveProperty('outputTokens');
   expect(impact).toHaveProperty('reasoning');
@@ -102,6 +103,7 @@ export const expectValidImpact = (impact: Claude4Impact): void => {
   expect(isPositiveNumber(impact.co2Grams)).toBe(true);
   expect(isPositiveNumber(impact.energyWh)).toBe(true);
   expect(isPositiveNumber(impact.waterLiters)).toBe(true);
+  expect(isPositiveNumber(impact.resourceDepletionMg)).toBe(true);
   expect(isPositiveNumber(impact.inputTokens)).toBe(true);
   expect(isPositiveNumber(impact.outputTokens)).toBe(true);
   expect(typeof impact.reasoning).toBe('boolean');

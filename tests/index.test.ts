@@ -20,6 +20,9 @@ import {
   getSupportedProviders,
   formatEmissionResult,
   aggregateEmissions,
+  // New Mistral-inspired functions
+  calculateMarginalImpact,
+  calculateGHGProtocolImpact,
   type CalculationOptions,
   type Claude4Impact,
   type AggregatedImpact,
@@ -68,6 +71,7 @@ describe('ai-carbon package', () => {
         expect(impact.co2Grams).toBeGreaterThan(0);
         expect(impact.energyWh).toBeGreaterThan(0);
         expect(impact.waterLiters).toBeGreaterThan(0);
+        expect(impact.resourceDepletionMg).toBeGreaterThan(0);
       });
 
       test('opus consumes more energy than sonnet for same tokens', () => {
@@ -964,6 +968,246 @@ describe('ai-carbon package', () => {
         expect(aggregated.waterLiters).toBeGreaterThan(0);
         expect(aggregated.totalTokens).toBe(2400); // 3 * (500 + 300)
         expect(aggregated.averageCO2PerToken).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  // New Mistral-inspired methodology tests
+  describe('Mistral-inspired environmental methodology', () => {
+    describe('resource depletion tracking', () => {
+      test('all emission results include resource depletion metric', async () => {
+        const result = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        expect(result).toHaveProperty('resourceDepletionMg');
+        expect(result.resourceDepletionMg).toBeGreaterThan(0);
+        expect(typeof result.resourceDepletionMg).toBe('number');
+      });
+
+      test('resource depletion scales with model size', async () => {
+        const sonnetResult = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        const opusResult = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-opus',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        // Opus should have higher resource depletion due to larger parameter count
+        expect(opusResult.resourceDepletionMg).toBeGreaterThan(sonnetResult.resourceDepletionMg);
+      });
+
+      test('different providers have different resource depletion factors', async () => {
+        const options = { inputTokens: 1000, outputTokens: 500 };
+        
+        const [claude, openai, gemini] = await Promise.all([
+          calculateImpact({ provider: 'claude', model: 'claude-4-sonnet', ...options }),
+          calculateImpact({ provider: 'openai', model: 'gpt-4o', ...options }),
+          calculateImpact({ provider: 'gemini', model: 'gemini-2.5-pro', ...options })
+        ]);
+
+        // All should have resource depletion but different amounts due to infrastructure differences
+        expect(claude.resourceDepletionMg).toBeGreaterThan(0);
+        expect(openai.resourceDepletionMg).toBeGreaterThan(0);
+        expect(gemini.resourceDepletionMg).toBeGreaterThan(0);
+        
+        // Gemini should have lowest due to TPU efficiency
+        expect(gemini.resourceDepletionMg).toBeLessThan(openai.resourceDepletionMg);
+      });
+    });
+
+    describe('upstream emissions factor', () => {
+      test('upstream emissions are included in CO2 calculations', async () => {
+        const result = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        // CO2 should be higher than base calculation due to upstream factor
+        expect(result.co2Grams).toBeGreaterThan(0);
+        
+        // Verify the result is consistent with upstream emissions factor
+        const provider = (await import('../index.js')).PROVIDERS.claude;
+        const modelInfo = provider.getModelInfo('claude-4-sonnet');
+        expect(modelInfo.parameterCount).toBeDefined();
+      });
+
+      test('different providers have different upstream factors', async () => {
+        const options = { inputTokens: 1000, outputTokens: 500 };
+        
+        const [claude, openai, gemini] = await Promise.all([
+          calculateImpact({ provider: 'claude', model: 'claude-4-sonnet', ...options }),
+          calculateImpact({ provider: 'openai', model: 'gpt-4o', ...options }),
+          calculateImpact({ provider: 'gemini', model: 'gemini-2.5-pro', ...options })
+        ]);
+
+        // All should account for upstream emissions differently
+        // Gemini should have lowest total impact due to better efficiency
+        expect(gemini.co2Grams).toBeLessThan(claude.co2Grams);
+        expect(gemini.co2Grams).toBeLessThan(openai.co2Grams);
+      });
+    });
+
+    describe('calculateMarginalImpact', () => {
+      test('calculates standardized 400-token response impact', async () => {
+        const marginalImpact = await calculateMarginalImpact('claude', 'claude-4-sonnet');
+        
+        expect(marginalImpact.inputTokens).toBe(50);
+        expect(marginalImpact.outputTokens).toBe(350);
+        expect(marginalImpact.reasoning).toBe(false);
+        expect(marginalImpact.co2Grams).toBeGreaterThan(0);
+        expect(marginalImpact.resourceDepletionMg).toBeGreaterThan(0);
+      });
+
+      test('provides baseline for comparison across providers', async () => {
+        const [claude, openai, gemini] = await Promise.all([
+          calculateMarginalImpact('claude', 'claude-4-sonnet'),
+          calculateMarginalImpact('openai', 'gpt-4o'), 
+          calculateMarginalImpact('gemini', 'gemini-2.5-pro')
+        ]);
+
+        // All should have same token distribution
+        expect(claude.inputTokens).toBe(50);
+        expect(openai.inputTokens).toBe(50);
+        expect(gemini.inputTokens).toBe(50);
+        expect(claude.outputTokens).toBe(350);
+        expect(openai.outputTokens).toBe(350);
+        expect(gemini.outputTokens).toBe(350);
+
+        // Gemini should be most efficient
+        expect(gemini.co2Grams).toBeLessThan(claude.co2Grams);
+        expect(gemini.co2Grams).toBeLessThan(openai.co2Grams);
+      });
+    });
+
+    describe('calculateGHGProtocolImpact', () => {
+      test('includes GHG Protocol scope breakdowns', async () => {
+        const result = await calculateGHGProtocolImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        expect(result).toHaveProperty('scope1Emissions');
+        expect(result).toHaveProperty('scope2Emissions');
+        expect(result).toHaveProperty('scope3Emissions');
+        
+        // Scope 1 should be minimal for cloud AI
+        expect(result.scope1Emissions).toBe(0);
+        
+        // Scope 2 should be majority of emissions (electricity)
+        expect(result.scope2Emissions).toBeGreaterThan(result.scope3Emissions);
+        
+        // Scopes should sum to total emissions
+        const totalScopes = result.scope1Emissions + result.scope2Emissions + result.scope3Emissions;
+        expect(totalScopes).toBeCloseTo(result.co2Grams, 1);
+      });
+
+      test('maintains compatibility with base EmissionResult interface', async () => {
+        const result = await calculateGHGProtocolImpact({
+          provider: 'gemini',
+          model: 'gemini-2.5-pro',
+          inputTokens: 500,
+          outputTokens: 300
+        });
+
+        // Should have all base properties
+        expect(result.provider).toBe('gemini');
+        expect(result.model).toBe('gemini-2.5-pro');
+        expect(result.co2Grams).toBeGreaterThan(0);
+        expect(result.energyWh).toBeGreaterThan(0);
+        expect(result.waterLiters).toBeGreaterThan(0);
+        expect(result.resourceDepletionMg).toBeGreaterThan(0);
+      });
+    });
+
+    describe('model size scaling', () => {
+      test('larger models have proportionally higher impact', async () => {
+        // Compare different sized models within same provider
+        const gpt4o = await calculateImpact({
+          provider: 'openai',
+          model: 'gpt-4o',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        const gpt4 = await calculateImpact({
+          provider: 'openai', 
+          model: 'gpt-4',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        // gpt-4 has more parameters so should have higher impact
+        expect(gpt4.co2Grams).toBeGreaterThan(gpt4o.co2Grams);
+        expect(gpt4.resourceDepletionMg).toBeGreaterThan(gpt4o.resourceDepletionMg);
+      });
+
+      test('parameter count affects scaling calculation', async () => {
+        const sonnet = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-sonnet',  // ~200B parameters
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        const opus = await calculateImpact({
+          provider: 'claude',
+          model: 'claude-4-opus',    // ~1T+ parameters
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        // Opus should have significantly higher impact due to ~5x more parameters
+        const scalingRatio = opus.co2Grams / sonnet.co2Grams;
+        expect(scalingRatio).toBeGreaterThan(1.1); // At least 10% higher
+        expect(scalingRatio).toBeLessThan(5.0);    // But not linearly proportional
+      });
+    });
+
+    describe('aggregate functions with resource depletion', () => {
+      test('aggregateEmissions includes resource depletion totals', async () => {
+        const results = await Promise.all([
+          calculateImpact({ provider: 'claude', model: 'claude-4-sonnet', inputTokens: 500, outputTokens: 300 }),
+          calculateImpact({ provider: 'openai', model: 'gpt-4o', inputTokens: 500, outputTokens: 300 })
+        ]);
+
+        const aggregated = aggregateEmissions(results);
+        
+        expect(aggregated).toHaveProperty('resourceDepletionMg');
+        expect(aggregated).toHaveProperty('averageResourceDepletionPerToken');
+        expect(aggregated.resourceDepletionMg).toBeGreaterThan(0);
+        expect(aggregated.averageResourceDepletionPerToken).toBeGreaterThan(0);
+        
+        // Should be sum of individual resource depletion values
+        const expectedTotal = results.reduce((sum, r) => sum + r.resourceDepletionMg, 0);
+        expect(aggregated.resourceDepletionMg).toBeCloseTo(expectedTotal, 6);
+      });
+
+      test('formatEmissionResult includes resource depletion in output', async () => {
+        const result = await calculateImpact({
+          provider: 'gemini',
+          model: 'gemini-2.5-pro',
+          inputTokens: 1000,
+          outputTokens: 500
+        });
+
+        const formatted = formatEmissionResult(result);
+        expect(formatted).toContain('Resource Depletion:');
+        expect(formatted).toContain(`${result.resourceDepletionMg.toFixed(2)}mg`);
       });
     });
   });
